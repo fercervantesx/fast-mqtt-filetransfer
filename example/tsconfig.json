@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "fast-mqtt-filetransfer": ["../src/index"],
+      "fast-mqtt-filetransfer/*": ["../src/*"]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "platforms": [
+    "apple",
+    "android",
+    "web"
+  ],
+  "apple": {
+    "modules": [
+      "FastMqttFiletransferModule"
+    ]
+  },
+  "android": {
+    "modules": [
+      "expo.modules.fastmqttfiletransfer.FastMqttFiletransferModule"
+    ]
+  }
+}
