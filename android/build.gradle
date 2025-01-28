@@ -3,6 +3,17 @@ apply plugin: 'com.android.library'
 group = 'expo.modules.fastmqttfiletransfer'
 version = '0.1.0'
 
+repositories {
+    mavenCentral() // Default for 'org.eclipse.paho'
+    maven { url 'https://jitpack.io' } // Add for JitPack dependencies
+}
+
+dependencies {
+    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    implementation 'io.github.mayzs:paho.mqtt.android:1.2.1'
+    implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
+}
+
 def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
 apply from: expoModulesCorePlugin
 applyKotlinExpoModulesCorePlugin()

@@ -1,12 +1,28 @@
-import { NativeModule, requireNativeModule } from 'expo';
+import { NativeModule, requireNativeModule } from "expo";
 
-import { FastMqttFiletransferModuleEvents } from './FastMqttFiletransfer.types';
+import {
+  FastMqttFiletransferModuleEvents,
+  MqttModuleType,
+} from "./FastMqttFiletransfer.types";
 
-declare class FastMqttFiletransferModule extends NativeModule<FastMqttFiletransferModuleEvents> {
-  PI: number;
-  hello(): string;
-  setValueAsync(value: string): Promise<void>;
+declare class FastMqttFiletransferModule
+  extends NativeModule<FastMqttFiletransferModuleEvents>
+  implements MqttModuleType
+{
+  initializeMqtt(scheme: string, host: string, port: number, path?: string): Promise<boolean>;
+  sendFile(
+    filePath: string,
+    encoding: string,
+    destinationTopic: string,
+    chunkSize?: number,
+    chunkIndex?: number,
+  ): Promise<boolean>;
+  publishTestMessage(topic: string): Promise<boolean>;
+  getConnectionStatus(): boolean;
 }
 
-// This call loads the native module object from the JSI.
-export default requireNativeModule<FastMqttFiletransferModule>('FastMqttFiletransfer');
+const FastMqttFiletransfer = requireNativeModule<FastMqttFiletransferModule>(
+  "FastMqttFiletransferModule",
+);
+
+export default FastMqttFiletransfer;

@@ -1,19 +1,39 @@
-import type { StyleProp, ViewStyle } from 'react-native';
+export enum EncodingType {
+  BASE64 = 'base64',
+  UTF8 = 'utf8',
+}
 
-export type OnLoadEventPayload = {
-  url: string;
+type MqttModuleType = {
+  initializeMqtt(
+    scheme: string,
+    host: string,
+    port: number,
+    path?: string,
+  ): Promise<boolean>;
+  sendFile(
+    filePath: string,
+    encoding: string,
+    destinationTopic: string,
+    chunkSize?: number,
+    chunkIndex?: number,
+  ): Promise<boolean>;
+  publishTestMessage(topic: string): Promise<boolean>;
+  getConnectionStatus(): boolean;
 };
 
-export type FastMqttFiletransferModuleEvents = {
-  onChange: (params: ChangeEventPayload) => void;
+type MqttConnectionStatusChangeEvent = {
+  connected: boolean;
 };
 
-export type ChangeEventPayload = {
-  value: string;
+type FileTransferProgressEvent = {
+  chunkIndex: number,
+  totalChunks: number,
+  percentage: number,
 };
 
-export type FastMqttFiletransferViewProps = {
-  url: string;
-  onLoad: (event: { nativeEvent: OnLoadEventPayload }) => void;
-  style?: StyleProp<ViewStyle>;
+type FastMqttFiletransferModuleEvents = {
+  onMqttStateChanged(event: MqttConnectionStatusChangeEvent): void;
+  onFileTransferProgress(event: FileTransferProgressEvent): void;
 };
+
+export { MqttModuleType, MqttConnectionStatusChangeEvent, FastMqttFiletransferModuleEvents};
