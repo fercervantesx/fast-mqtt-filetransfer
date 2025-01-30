@@ -3,91 +3,103 @@ import CocoaMQTT
 import Foundation
 
 public class FastMqttFiletransferModule: Module {
-  private var mqttClient: CocoaMQTT?
+  private var mqttClient: CocoaMQTT5?
+  private var socket: CocoaMQTTWebSocket?
 
-  public override func definition() -> ModuleDefinition {
+  public func definition() -> ModuleDefinition {
+    // 1. Module Name
     Name("FastMqttFiletransferModule")
 
-    // Event definitions
+    // 2. Declare events
     Events("onMqttStateChanged", "onFileTransferProgress")
 
+    // 3. "initializeMqtt" function
     Function("initializeMqtt") { (scheme: String, host: String, port: UInt16, path: String?) -> Bool in
-      // Validate the scheme
+      // Validate scheme
       guard ["mqtt", "mqtts", "ws", "wss"].contains(scheme) else {
         throw FastMqttFiletransferModuleError.invalidScheme
       }
 
-      // Construct the URL based on scheme and optional path
-      let baseUrl = "\(scheme)://\(host):\(port)"
-      let fullUrl = (scheme == "ws" || scheme == "wss") && path != nil ? "\(baseUrl)\(path!)" : baseUrl
-
       let clientID = "ExpoMqttClient-\(UUID().uuidString)"
-      mqttClient = CocoaMQTT(clientID: clientID, host: host, port: port)
 
-      // Configure WebSocket or Secure WebSocket path
+      // If using WebSockets
       if scheme == "ws" || scheme == "wss" {
-        mqttClient?.websocketPath = path ?? "/mqtt"
+        let wsURI = path ?? "/mqtt"
+        let websocket = CocoaMQTTWebSocket(uri: wsURI)
+        self.socket = websocket
+        self.mqttClient = CocoaMQTT5(clientID: clientID, host: host, port: port, socket: websocket)
+      } else {
+        // Normal TCP
+        self.mqttClient = CocoaMQTT5(clientID: clientID, host: host, port: port)
       }
 
-      mqttClient?.enableSSL = (scheme == "mqtts" || scheme == "wss")
-      mqttClient?.allowUntrustedCertificates = true
+      guard let mqttClient = self.mqttClient else {
+        return false
+      }
 
-      mqttClient?.didConnectAck = { [weak self] _, ack in
-        if ack == .accept {
+      // Enable SSL if needed
+      mqttClient.enableSSL = (scheme == "mqtts" || scheme == "wss")
+      mqttClient.allowUntrustCACertificate = true
+
+      // Called when we get ConnAck from the broker
+      mqttClient.didConnectAck = { [weak self] _, ack, _ in
+        if ack == .success {
           self?.sendEvent("onMqttStateChanged", ["connected": true])
         } else {
           self?.sendEvent("onMqttStateChanged", ["connected": false])
         }
       }
 
-      mqttClient?.didDisconnect = { [weak self] _, _ in
+      // Called when the client disconnects
+      mqttClient.didDisconnect = { [weak self] _, _ in
         self?.sendEvent("onMqttStateChanged", ["connected": false])
       }
 
-      let success = mqttClient?.connect() ?? false
-      return success
+      // Attempt connecting
+      return mqttClient.connect()
     }
 
+    // 4. "sendFile" async function
     AsyncFunction("sendFile") {
-      (filePath: String,
-       encoding: String,
-       destinationTopic: String,
-       chunkSize: Int?,
-       chunkIndex: Int?) -> Bool in
+      (filePath: String, encoding: String, destinationTopic: String, chunkSize: Int?, chunkIndex: Int?) -> Bool in
 
-      guard let mqttClient = mqttClient, mqttClient.connState == .connected else {
+      guard let mqttClient = self.mqttClient else {
+        throw FastMqttFiletransferModuleError.notConnected
+      }
+      guard mqttClient.connState == .connected else {
         throw FastMqttFiletransferModuleError.notConnected
       }
 
-      // Resolve the file path
+      // Validate file
       let url = URL(fileURLWithPath: filePath)
       guard FileManager.default.fileExists(atPath: url.path) else {
         throw FastMqttFiletransferModuleError.fileNotFound
       }
-
       let fileData = try Data(contentsOf: url)
 
-      // Handle native chunking or JS-defined chunking
+      // Either single chunk or native chunk
       if let chunkSize = chunkSize, let chunkIndex = chunkIndex {
-        // JS Chunking: Send a specific chunk
+        // Single-chunk
         let start = chunkIndex * chunkSize
         let end = min(start + chunkSize, fileData.count)
         guard start < fileData.count else {
           throw FastMqttFiletransferModuleError.invalidChunkRange
         }
 
-        let chunkData = fileData.subdata(in: start..<end)
+        let chunkData = fileData.subdata(in: start ..< end)
         try self.publishData(chunkData, encoding: encoding, topic: destinationTopic)
-
         return true
+
       } else {
-        // Native Chunking: Send the entire file in chunks
-        let totalChunks = Int(ceil(Double(fileData.count) / Double(chunkSize ?? fileData.count)))
+        // Native chunking
+        let chunk = chunkSize ?? fileData.count
+        let totalChunks = Int(ceil(Double(fileData.count) / Double(chunk)))
         var sentChunks = 0
 
-        for start in stride(from: 0, to: fileData.count, by: chunkSize ?? fileData.count) {
-          let end = min(start + (chunkSize ?? fileData.count), fileData.count)
-          let chunkData = fileData.subdata(in: start..<end)
+        for start in stride(from: 0, to: fileData.count, by: chunk) {
+          let end = min(start + chunk, fileData.count)
+          let chunkData = fileData.subdata(in: start ..< end)
+
           try self.publishData(chunkData, encoding: encoding, topic: destinationTopic)
 
           sentChunks += 1
@@ -98,44 +110,51 @@ public class FastMqttFiletransferModule: Module {
             "percentage": percentage
           ])
         }
-
         return true
       }
     }
 
+    // 5. A function to publish a test message
     Function("publishTestMessage") { (topic: String) -> Bool in
-      guard let mqttClient = mqttClient, mqttClient.connState == .connected else {
+      guard let mqttClient = self.mqttClient, mqttClient.connState == .connected else {
         throw FastMqttFiletransferModuleError.notConnected
       }
-
-      mqttClient.publish(topic, withString: "Hello from Swift!")
+      // Build a test CocoaMQTT5Message
+      let message = CocoaMQTT5Message(topic: topic, string: "Hello from Swift!")
+      let props = MqttPublishProperties()
+      _ = mqttClient.publish(message, DUP: false, retained: false, properties: props)
       return true
     }
   }
 
+  // MARK: - Helpers
   private func publishData(_ data: Data, encoding: String, topic: String) throws {
     guard let mqttClient = mqttClient else {
       throw FastMqttFiletransferModuleError.notConnected
     }
 
+    // Determine final payload (Base64, UTF8, or fallback to raw)
     let payload: String
     switch encoding.lowercased() {
-    case "base64":
-      payload = data.base64EncodedString()
-    case "utf8":
-      guard let text = String(data: data, encoding: .utf8) else {
-        throw FastMqttFiletransferModuleError.encodingFailed
-      }
-      payload = text
-    default:
-      payload = String(decoding: data, as: UTF8.self)
+      case "base64":
+        payload = data.base64EncodedString()
+      case "utf8":
+        guard let text = String(data: data, encoding: .utf8) else {
+          throw FastMqttFiletransferModuleError.encodingFailed
+        }
+        payload = text
+      default:
+        payload = String(decoding: data, as: UTF8.self)
     }
 
-    mqttClient.publish(topic, withString: payload)
+    // Publish using CocoaMQTT5
+    let message = CocoaMQTT5Message(topic: topic, string: payload)
+    let props = MqttPublishProperties()
+    _ = mqttClient.publish(message, DUP: false, retained: false, properties: props)
   }
 }
 
-// Define Errors
+// MARK: - Errors
 enum FastMqttFiletransferModuleError: Error, CustomStringConvertible {
   case notConnected
   case fileNotFound

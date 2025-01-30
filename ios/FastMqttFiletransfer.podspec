@@ -20,6 +20,8 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
   s.dependency 'CocoaMQTT'
+  s.dependency 'CocoaMQTT/WebSockets'
+  s.dependency 'Starscream'
 
   # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {

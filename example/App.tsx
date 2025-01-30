@@ -39,7 +39,7 @@ export default function App() {
     const progressListener = FastMqttFiletransfer.addListener(
       "onFileTransferProgress",
       (event: FileTransferProgressEvent) => {
-        setProgressPercentage(event.percentage.toFixed(1));
+        setProgressPercentage(Number.parseInt(event.percentage.toFixed(1), 10));
       }
     );
 
